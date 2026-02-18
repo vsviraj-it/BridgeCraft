@@ -1,30 +1,43 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform, Dimensions, RefreshControl, ActivityIndicator, TouchableOpacity } from 'react-native';
-import NetInfo, { NetInfoSubscription, NetInfoState, NetInfoCellularGeneration } from '@react-native-community/netinfo';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Platform,
+  RefreshControl,
+  TouchableOpacity,
+  useWindowDimensions,
+} from 'react-native';
+import NetInfo, {
+  NetInfoSubscription,
+  NetInfoState,
+  NetInfoCellularGeneration,
+} from '@react-native-community/netinfo';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import HapticFeedback from 'react-native-haptic-feedback';
-import { useWindowDimensions } from 'react-native';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
   withSpring,
+  interpolateColor,
 } from 'react-native-reanimated';
 import SpeedDisplayCard from './components/SpeedDisplayCard';
 import { startNetworkSpeed, stopNetworkSpeed } from './NetworkSpeed';
-import { saveSpeedData } from './utils/storage'; // Import saveSpeedData
+import { saveSpeedData } from './utils/storage';
 
-// Optional: Haptic feedback options
-const hapticOptions = {
+const HAPTIC_OPTIONS = {
   enableVibrateFallback: true,
   ignoreAndroidSystemSettings: false,
 };
 
-const getIconName = (type: NetInfoState['type'], isInternetReachable: boolean | null): string => {
-  if (!isInternetReachable) {
-    return 'wan-off'; // No internet
-  }
+const getIconName = (
+  type: NetInfoState['type'],
+  isInternetReachable: boolean | null,
+): string => {
+  if (!isInternetReachable) return 'wan-off';
   switch (type) {
     case 'wifi':
       return 'wifi';
@@ -35,24 +48,21 @@ const getIconName = (type: NetInfoState['type'], isInternetReachable: boolean | 
     case 'bluetooth':
       return 'bluetooth';
     case 'vpn':
-    case 'other': // Add other types that might represent connected state
+    case 'other':
     case 'wimax':
-      return 'vpn'; // Using vpn icon for generic connected, or could be 'network'
-    case 'none':
-    case 'unknown':
+      return 'vpn';
     default:
       return 'network-off-outline';
   }
 };
 
-const getBackgroundColor = (isInternetReachable: boolean | null): string => {
-  if (isInternetReachable === null) {
-    return '#808080'; // Unknown or initial state
-  } else if (isInternetReachable) {
-    return '#4CAF50'; // Green for connected
-  } else {
-    return '#F44336'; // Red for disconnected
-  }
+const COLORS = {
+  connected: '#4CAF50',
+  disconnected: '#F44336',
+  unknown: '#808080',
+  white: '#FFFFFF',
+  textSecondary: 'rgba(255, 255, 255, 0.8)',
+  containerBg: 'rgba(255, 255, 255, 0.15)',
 };
 
 const Home = ({ navigation }: { navigation: any }) => {
@@ -64,128 +74,163 @@ const Home = ({ navigation }: { navigation: any }) => {
   const [downloadSpeed, setDownloadSpeed] = useState(0);
   const [uploadSpeed, setUploadSpeed] = useState(0);
 
+  // Refs to store latest speeds for periodic saving without effect dependency issues
+  const latestDownloadSpeed = useRef(0);
+  const latestUploadSpeed = useRef(0);
 
-  // Animation values
   const scale = useSharedValue(1);
   const opacity = useSharedValue(1);
-  const backgroundColor = useSharedValue(getBackgroundColor(null));
+  const statusColor = useSharedValue(0); // 0: unknown, 1: connected, 2: disconnected
 
   const fetchNetworkInfo = useCallback(async () => {
     setIsRefreshing(true);
-    const state = await NetInfo.fetch();
-    setNetInfo(state);
+    try {
+      const state = await NetInfo.fetch();
+      setNetInfo(state);
+      updateIP(state);
+    } catch (err) {
+      console.error('Failed to fetch network info', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
 
-    // This is a simplified way to get IP. In a real app, you might need a native module or a third-party API.
-    // For now, let's simulate.
+  const updateIP = (state: NetInfoState) => {
     if (state.isInternetReachable && state.details) {
       if (state.type === 'wifi' && (state.details as any).ipAddress) {
         setIpAddress((state.details as any).ipAddress);
       } else if (state.type === 'cellular') {
-        // IP address for cellular is harder to get directly in RN, often requires external service
-        setIpAddress('Not available (Cellular)');
+        setIpAddress('Cellular Connection');
       } else {
         setIpAddress('N/A');
       }
     } else {
       setIpAddress('Disconnected');
     }
-    setIsRefreshing(false);
-  }, []);
+  };
 
   useEffect(() => {
-    fetchNetworkInfo(); // Initial fetch
+    fetchNetworkInfo();
 
-    const unsubscribeNetInfo: NetInfoSubscription = NetInfo.addEventListener(state => {
-      setNetInfo(state);
-      // Trigger haptic feedback on connection change
-      if (Platform.OS === 'ios') {
-        HapticFeedback.trigger('impactLight', hapticOptions);
-      }
-      backgroundColor.value = withTiming(getBackgroundColor(state.isInternetReachable));
-    });
+    const unsubscribeNetInfo: NetInfoSubscription = NetInfo.addEventListener(
+      state => {
+        setNetInfo(state);
+        updateIP(state);
+
+        if (Platform.OS === 'ios') {
+          HapticFeedback.trigger('impactLight', HAPTIC_OPTIONS);
+        }
+
+        let colorVal = 0;
+        if (state.isInternetReachable === true) colorVal = 1;
+        else if (state.isInternetReachable === false) colorVal = 2;
+        statusColor.value = withTiming(colorVal, { duration: 500 });
+      },
+    );
 
     const unsubscribeNetworkSpeed = startNetworkSpeed(data => {
       setDownloadSpeed(data.download);
       setUploadSpeed(data.upload);
-      // Data is saved periodically by the interval below, to avoid too many writes.
-      // If you need real-time historical data, consider saving here as well.
+      latestDownloadSpeed.current = data.download;
+      latestUploadSpeed.current = data.upload;
     });
 
-    // Periodically save speed data every minute
     const saveInterval = setInterval(() => {
-      if (downloadSpeed !== 0 || uploadSpeed !== 0) { // Only save if there's actual activity
-        saveSpeedData(downloadSpeed, uploadSpeed);
+      if (latestDownloadSpeed.current > 0 || latestUploadSpeed.current > 0) {
+        saveSpeedData(latestDownloadSpeed.current, latestUploadSpeed.current);
       }
-    }, 60000); // Save every 1 minute
+    }, 60000);
 
     return () => {
       unsubscribeNetInfo();
       unsubscribeNetworkSpeed.remove();
       stopNetworkSpeed();
-      clearInterval(saveInterval); // Clear interval on unmount
+      clearInterval(saveInterval);
     };
-  }, [fetchNetworkInfo, backgroundColor, downloadSpeed, uploadSpeed]);
+  }, [fetchNetworkInfo]);
 
   useEffect(() => {
-    // Animate icon scale on network type change
-    scale.value = withSpring(1.2, {}, () => {
+    scale.value = withSpring(1.15, {}, () => {
       scale.value = withSpring(1);
     });
-    opacity.value = withTiming(0.8, { duration: 300 }, () => {
-      opacity.value = withTiming(1, { duration: 300 });
+    opacity.value = withTiming(0.7, { duration: 200 }, () => {
+      opacity.value = withTiming(1, { duration: 200 });
     });
-  }, [netInfo?.type, scale, opacity]);
+  }, [netInfo?.type]);
 
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: scale.value }],
-      opacity: opacity.value,
-    };
-  });
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: opacity.value,
+  }));
 
-  const animatedBackgroundStyle = useAnimatedStyle(() => {
-    return {
-      backgroundColor: backgroundColor.value,
-    };
-  });
+  const animatedBackgroundStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(
+      statusColor.value,
+      [0, 1, 2],
+      [COLORS.unknown, COLORS.connected, COLORS.disconnected],
+    ),
+  }));
 
-  const getCellularGeneration = (gen: NetInfoCellularGeneration | null | undefined) => {
-    if (gen) {
-      return `Cellular Gen: ${gen.toUpperCase()}`;
-    }
-    return 'N/A';
+  const getCellularGeneration = (
+    gen: NetInfoCellularGeneration | null | undefined,
+  ) => {
+    return gen ? `Cellular Gen: ${gen.toUpperCase()}` : 'N/A';
   };
 
   const navigateToHistory = useCallback(() => {
-    navigation.navigate('NetworkHistory'); // Navigate to new history screen
+    navigation.navigate('NetworkHistory');
   }, [navigation]);
 
   return (
-    <Animated.View style={[styles.container, { paddingTop: insets.top }, animatedBackgroundStyle]}>
+    <Animated.View
+      style={[
+        styles.container,
+        { paddingTop: insets.top },
+        animatedBackgroundStyle,
+      ]}
+    >
       <ScrollView
-        contentContainerStyle={[styles.scrollViewContent, { minHeight: height - insets.top - insets.bottom }]}
-        contentInsetAdjustmentBehavior="automatic"
+        contentContainerStyle={[
+          styles.scrollViewContent,
+          { minHeight: height - insets.top - insets.bottom },
+        ]}
+        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={fetchNetworkInfo} tintColor="#fff" titleColor="#fff" />
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={fetchNetworkInfo}
+            tintColor="#fff"
+          />
         }
       >
         <View style={styles.content}>
           <Animated.View style={[styles.iconContainer, animatedStyle]}>
             <MaterialCommunityIcons
-              name={getIconName(netInfo?.type || 'unknown', netInfo?.isInternetReachable)}
-              size={width * 0.3}
-              color="#fff"
+              name={getIconName(
+                netInfo?.type || 'unknown',
+                netInfo?.isInternetReachable,
+              )}
+              size={width * 0.25}
+              color={COLORS.white}
             />
           </Animated.View>
 
-          <Text style={styles.statusText}>
-            {netInfo?.isInternetReachable === null ? 'Detecting...' : (netInfo?.isInternetReachable ? 'Connected' : 'Disconnected')}
-          </Text>
-          {netInfo?.isInternetReachable !== null && (
-            <Text style={styles.typeText}>
-              {netInfo?.type ? `Type: ${netInfo.type.toUpperCase()}` : 'Unknown'}
+          <View style={styles.textContainer}>
+            <Text style={styles.statusText}>
+              {netInfo?.isInternetReachable === null
+                ? 'Detecting...'
+                : netInfo?.isInternetReachable
+                ? 'Connected'
+                : 'Disconnected'}
             </Text>
-          )}
+            {netInfo?.isInternetReachable !== null && (
+              <Text style={styles.typeText}>
+                {netInfo?.type
+                  ? `Type: ${netInfo.type.toUpperCase()}`
+                  : 'Unknown Connection'}
+              </Text>
+            )}
+          </View>
 
           {netInfo?.isInternetReachable && netInfo.details && (
             <View style={styles.detailsContainer}>
@@ -201,27 +246,43 @@ const Home = ({ navigation }: { navigation: any }) => {
               )}
               {netInfo.type === 'cellular' && (
                 <Text selectable style={styles.detailText}>
-                  {getCellularGeneration((netInfo.details as any)?.cellularGeneration)}
+                  {getCellularGeneration(
+                    (netInfo.details as any)?.cellularGeneration,
+                  )}
                 </Text>
               )}
               {netInfo.details.hasOwnProperty('strength') && (
                 <Text selectable style={styles.detailText}>
-                  Strength: {netInfo.details.strength}%
+                  Signal Strength: {netInfo.details.strength}%
                 </Text>
               )}
             </View>
           )}
 
-          {!netInfo?.isInternetReachable && netInfo?.isInternetReachable !== null && (
-            <Text style={styles.noInternetText}>No internet connection detected.</Text>
-          )}
+          {!netInfo?.isInternetReachable &&
+            netInfo?.isInternetReachable !== null && (
+              <Text style={styles.noInternetText}>
+                No internet connection detected.
+              </Text>
+            )}
 
-          <SpeedDisplayCard downloadSpeed={downloadSpeed} uploadSpeed={uploadSpeed} />
+          <SpeedDisplayCard
+            downloadSpeed={downloadSpeed}
+            uploadSpeed={uploadSpeed}
+          />
 
-          <TouchableOpacity onPress={navigateToHistory} style={styles.historyButton}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={navigateToHistory}
+            style={styles.historyButton}
+          >
             <Text style={styles.historyButtonText}>View Network History</Text>
+            <MaterialCommunityIcons
+              name="chevron-right"
+              size={20}
+              color={COLORS.white}
+            />
           </TouchableOpacity>
-
         </View>
       </ScrollView>
     </Animated.View>
@@ -235,77 +296,85 @@ const styles = StyleSheet.create({
   scrollViewContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    alignItems: 'center',
-    paddingBottom: 20, // Give some padding at the bottom for scroll view
-    gap: 20, // Using flex gap
+    paddingBottom: 30,
   },
   content: {
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 25,
     width: '100%',
-    gap: 20, // Using flex gap
   },
   iconContainer: {
-    padding: 20,
-    borderRadius: 100, // Make it a circle
-    backgroundColor: 'rgba(255,255,255,0.2)', // Semi-transparent background for the icon
+    padding: 30,
+    borderRadius: 100,
+    backgroundColor: 'rgba(255,255,255,0.2)',
     marginBottom: 20,
-    aspectRatio: 1, // Ensure it's a perfect circle
+    aspectRatio: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000', // iOS shadow
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 8, // Android shadow
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.2,
+        shadowRadius: 15,
+      },
+      android: {
+        elevation: 10,
+      },
+    }),
+  },
+  textContainer: {
+    alignItems: 'center',
+    marginBottom: 25,
   },
   statusText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 10,
-    textAlign: 'center',
+    fontSize: 34,
+    fontWeight: '800',
+    color: COLORS.white,
+    letterSpacing: 0.5,
   },
   typeText: {
-    fontSize: 20,
-    color: 'rgba(255,255,255,0.8)',
-    marginBottom: 30,
-    textAlign: 'center',
+    fontSize: 18,
+    color: COLORS.textSecondary,
+    marginTop: 5,
+    fontWeight: '500',
   },
   detailsContainer: {
-    width: '90%',
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 15,
+    width: '100%',
+    backgroundColor: COLORS.containerBg,
+    borderRadius: 20,
     padding: 20,
-    alignItems: 'flex-start',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5, // Android shadow
-    gap: 8, // Using flex gap
+    marginBottom: 25,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   detailText: {
     fontSize: 16,
-    color: '#fff',
+    color: COLORS.white,
+    marginVertical: 4,
+    fontWeight: '500',
   },
   noInternetText: {
-    fontSize: 20,
+    fontSize: 18,
     color: 'rgba(255,255,255,0.9)',
-    marginTop: 20,
+    marginVertical: 20,
     textAlign: 'center',
+    fontWeight: '600',
   },
   historyButton: {
     marginTop: 30,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 12,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    paddingVertical: 14,
     paddingHorizontal: 25,
-    borderRadius: 25,
+    borderRadius: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   historyButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
+    color: COLORS.white,
+    fontSize: 17,
+    fontWeight: '700',
   },
 });
 

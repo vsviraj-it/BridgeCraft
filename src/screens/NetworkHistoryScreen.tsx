@@ -1,152 +1,229 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, RefreshControl, Platform, ActivityIndicator, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  RefreshControl,
+  ActivityIndicator,
+  TouchableOpacity,
+  useWindowDimensions,
+} from 'react-native';
 import { LineChart } from 'react-native-chart-kit';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useWindowDimensions } from 'react-native';
-import { SpeedDataPoint, getSpeedHistory } from '../utils/storage';
-import { formatSpeed } from '../utils/speedUtils';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { SpeedDataPoint, getSpeedHistory } from '../utils/storage';
 
 type TimeRange = '24h' | '7d';
 
-const NetworkHistoryScreen = () => {
+const COLORS = {
+  primary: '#007AFF',
+  success: '#4CD964',
+  background: '#121212',
+  cardBg: 'rgba(255, 255, 255, 0.08)',
+  text: '#FFFFFF',
+  textSecondary: 'rgba(255, 255, 255, 0.6)',
+  white: '#FFFFFF',
+};
+
+const NetworkHistoryScreen = ({ navigation }: { navigation: any }) => {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [history, setHistory] = useState<SpeedDataPoint[]>([]);
-  const [filteredHistory, setFilteredHistory] = useState<SpeedDataPoint[]>([]);
   const [timeRange, setTimeRange] = useState<TimeRange>('24h');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchHistory = useCallback(async () => {
-    setIsRefreshing(true);
-    setIsLoading(true);
-    const storedHistory = await getSpeedHistory();
-    setHistory(storedHistory);
-    setIsRefreshing(false);
-    setIsLoading(false);
+  const fetchHistory = useCallback(async (showLoading = false) => {
+    if (showLoading) setIsLoading(true);
+    else setIsRefreshing(true);
+
+    try {
+      const storedHistory = await getSpeedHistory();
+      setHistory(storedHistory);
+    } catch (err) {
+      console.error('Failed to fetch history', err);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
   }, []);
 
   useEffect(() => {
-    fetchHistory();
-    // Refresh history every 5 minutes
-    const interval = setInterval(fetchHistory, 5 * 60 * 1000);
+    fetchHistory(true);
+    const interval = setInterval(() => fetchHistory(false), 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, [fetchHistory]);
 
-  useEffect(() => {
-    const filterData = () => {
-      const now = Date.now();
-      let startTime = 0;
-      if (timeRange === '24h') {
-        startTime = now - 24 * 60 * 60 * 1000;
-      } else if (timeRange === '7d') {
-        startTime = now - 7 * 24 * 60 * 60 * 1000;
-      }
-      setFilteredHistory(history.filter(point => point.timestamp >= startTime));
-    };
-    filterData();
+  const filteredHistory = useMemo(() => {
+    const now = Date.now();
+    const threshold =
+      timeRange === '24h' ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+
+    return history
+      .filter(point => point.timestamp >= now - threshold)
+      .sort((a, b) => a.timestamp - b.timestamp);
   }, [history, timeRange]);
 
-  // Prepare data for the chart
-  const chartData = {
-    labels: filteredHistory.map(point => {
-      const date = new Date(point.timestamp);
-      if (timeRange === '24h') {
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      } else {
-        return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
-      }
-    }),
-    datasets: [
-      {
-        data: filteredHistory.map(point => point.download / 1000000), // Convert to MB/s for chart
-        color: (opacity = 1) => `rgba(0, 122, 255, ${opacity})`, // Blue for Download
-        strokeWidth: 2,
-        legend: 'Download (MB/s)'
-      },
-      {
-        data: filteredHistory.map(point => point.upload / 1000000), // Convert to MB/s for chart
-        color: (opacity = 1) => `rgba(76, 217, 100, ${opacity})`, // Green for Upload
-        strokeWidth: 2,
-        legend: 'Upload (MB/s)'
-      }
-    ],
-  };
+  const chartData = useMemo(() => {
+    if (filteredHistory.length === 0) return null;
 
-  const chartConfig = {
-    backgroundGradientFrom: '#1E2923',
-    backgroundGradientFromOpacity: 0,
-    backgroundGradientTo: '#08130D',
-    backgroundGradientToOpacity: 0.5,
-    color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-    labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-    strokeWidth: 2, // optional, default 3
-    barPercentage: 0.5,
-    useShadowColorFromDataset: false, // optional
-    propsForLabels: {
-      fontSize: 10,
-    },
-    decimalPlaces: 2, // Set to 2 decimal places for MB/s
-  };
+    return {
+      labels: filteredHistory.map(point => {
+        const date = new Date(point.timestamp);
+        return timeRange === '24h'
+          ? date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+      }),
+      datasets: [
+        {
+          data: filteredHistory.map(point => point.download / 1000000),
+          color: (opacity = 1) => `rgba(0, 122, 255, ${opacity})`,
+          strokeWidth: 3,
+          legend: 'Download (MB/s)',
+        },
+        {
+          data: filteredHistory.map(point => point.upload / 1000000),
+          color: (opacity = 1) => `rgba(76, 217, 100, ${opacity})`,
+          strokeWidth: 3,
+          legend: 'Upload (MB/s)',
+        },
+      ],
+      legend: ['Download', 'Upload'],
+    };
+  }, [filteredHistory, timeRange]);
+
+  const chartConfig = useMemo(
+    () => ({
+      backgroundGradientFrom: COLORS.background,
+      backgroundGradientTo: COLORS.background,
+      color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+      labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+      strokeWidth: 2,
+      decimalPlaces: 1,
+      propsForDots: {
+        r: '4',
+        strokeWidth: '2',
+        stroke: COLORS.primary,
+      },
+    }),
+    [],
+  );
+
+  const renderTimeRangeSelector = () => (
+    <View style={styles.timeRangeContainer}>
+      {(['24h', '7d'] as TimeRange[]).map(range => (
+        <TouchableOpacity
+          key={range}
+          activeOpacity={0.7}
+          style={[
+            styles.timeRangeButton,
+            timeRange === range && styles.activeTimeRangeButton,
+          ]}
+          onPress={() => setTimeRange(range)}
+        >
+          <Text
+            style={[
+              styles.timeRangeButtonText,
+              timeRange === range && styles.activeTimeRangeButtonText,
+            ]}
+          >
+            {range === '24h' ? '24 Hours' : '7 Days'}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
+    <View
+      style={[
+        styles.container,
+        { paddingTop: insets.top, paddingBottom: insets.bottom },
+      ]}
+    >
+      <View style={styles.header}>
+        <TouchableOpacity
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
+          <MaterialCommunityIcons
+            name="arrow-left"
+            size={28}
+            color={COLORS.white}
+          />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Network History</Text>
+        <View style={{ width: 28 }} />
+      </View>
+
       <ScrollView
         contentContainerStyle={styles.scrollViewContent}
-        contentInsetAdjustmentBehavior="automatic"
+        showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={fetchHistory} tintColor="#fff" titleColor="#fff" />
+          <RefreshControl
+            refreshing={isRefreshing}
+            onRefresh={() => fetchHistory(false)}
+            tintColor={COLORS.white}
+          />
         }
       >
-        <Text style={styles.headerTitle}>Network History</Text>
-
-        <View style={styles.timeRangeContainer}>
-          <TouchableOpacity
-            style={[styles.timeRangeButton, timeRange === '24h' && styles.activeTimeRangeButton]}
-            onPress={() => setTimeRange('24h')}
-          >
-            <Text style={styles.timeRangeButtonText}>24 Hours</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.timeRangeButton, timeRange === '7d' && styles.activeTimeRangeButton]}
-            onPress={() => setTimeRange('7d')}
-          >
-            <Text style={styles.timeRangeButtonText}>7 Days</Text>
-          </TouchableOpacity>
-        </View>
+        {renderTimeRangeSelector()}
 
         {isLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.loadingText}>Loading history...</Text>
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color={COLORS.primary} />
+            <Text style={styles.loadingText}>Analyzing network data...</Text>
           </View>
         ) : filteredHistory.length > 1 ? (
-          <View style={styles.chartContainer}>
+          <View style={styles.chartWrapper}>
+            <Text style={styles.chartTitle}>Speed Trends (MB/s)</Text>
             <LineChart
-              data={chartData}
-              width={width - 40} // Subtract padding
-              height={220}
+              data={chartData!}
+              width={width - 32}
+              height={240}
               chartConfig={chartConfig}
-              bezier // Smooth line chart
+              bezier
               style={styles.chart}
               verticalLabelRotation={30}
-              formatYLabel={(yValue) => `${yValue} MB/s`} // Add MB/s unit to Y-axis labels
+              formatYLabel={y => parseFloat(y).toFixed(1)}
+              withInnerLines={false}
+              withOuterLines={true}
+              withHorizontalLines={true}
+              withVerticalLines={false}
             />
-             <View style={styles.legendContainer}>
-                {chartData.datasets.map((dataset, index) => (
-                    <View key={index} style={styles.legendItem}>
-                        <View style={[styles.legendColor, { backgroundColor: dataset.color(1) }]} />
-                        <Text style={styles.legendText}>{dataset.legend}</Text>
-                    </View>
-                ))}
+            <View style={styles.legendContainer}>
+              <View style={styles.legendItem}>
+                <View
+                  style={[
+                    styles.legendDot,
+                    { backgroundColor: COLORS.primary },
+                  ]}
+                />
+                <Text style={styles.legendText}>Download</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View
+                  style={[
+                    styles.legendDot,
+                    { backgroundColor: COLORS.success },
+                  ]}
+                />
+                <Text style={styles.legendText}>Upload</Text>
+              </View>
             </View>
           </View>
         ) : (
           <View style={styles.noDataContainer}>
-            <MaterialCommunityIcons name="chart-line-variant" size={60} color="rgba(255,255,255,0.6)" />
-            <Text style={styles.noDataText}>No sufficient data to display chart.</Text>
-            <Text style={styles.noDataSubText}>Start using the app to collect speed data!</Text>
+            <MaterialCommunityIcons
+              name="chart-bell-curve-cumulative"
+              size={80}
+              color={COLORS.textSecondary}
+            />
+            <Text style={styles.noDataText}>No history data yet</Text>
+            <Text style={styles.noDataSubText}>
+              Keep the app running to track your network performance over time.
+            </Text>
           </View>
         )}
       </ScrollView>
@@ -157,105 +234,123 @@ const NetworkHistoryScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#333', // Dark background for the history screen
+    backgroundColor: COLORS.background,
   },
-  scrollViewContent: {
-    flexGrow: 1,
+  header: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 20,
-    gap: 20,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  backButton: {
+    padding: 4,
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 20,
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.white,
+    letterSpacing: 0.5,
+  },
+  scrollViewContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 30,
   },
   timeRangeContainer: {
     flexDirection: 'row',
-    marginBottom: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 10,
-    overflow: 'hidden',
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 12,
+    padding: 4,
+    marginVertical: 20,
   },
   timeRangeButton: {
+    flex: 1,
     paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderRadius: 8,
+    alignItems: 'center',
+    borderRadius: 10,
   },
   activeTimeRangeButton: {
-    backgroundColor: '#007AFF', // Active button color
+    backgroundColor: COLORS.primary,
   },
   timeRangeButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+    fontSize: 15,
   },
-  chartContainer: {
-    width: '95%',
+  activeTimeRangeButtonText: {
+    color: COLORS.white,
+  },
+  centerContainer: {
+    height: 300,
+    justifyContent: 'center',
     alignItems: 'center',
-    padding: 10,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+  },
+  loadingText: {
+    color: COLORS.textSecondary,
+    marginTop: 15,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  chartWrapper: {
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 20,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  chartTitle: {
+    color: COLORS.white,
+    fontSize: 16,
+    fontWeight: '700',
+    alignSelf: 'flex-start',
+    marginBottom: 15,
+    marginLeft: 8,
   },
   chart: {
-    marginVertical: 8,
     borderRadius: 16,
+    marginRight: -16, // Offset internal padding of LineChart
   },
   legendContainer: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    marginTop: 10,
+    marginTop: 20,
+    gap: 24,
   },
   legendItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 10,
+    gap: 8,
   },
-  legendColor: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 5,
+  legendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
   },
   legendText: {
-    color: '#fff',
-    fontSize: 12,
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '600',
   },
   noDataContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 15,
-    width: '90%',
-    minHeight: 250,
+    padding: 40,
+    marginTop: 40,
+    backgroundColor: COLORS.cardBg,
+    borderRadius: 24,
   },
   noDataText: {
-    fontSize: 18,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 10,
-    textAlign: 'center',
+    fontSize: 20,
+    fontWeight: '700',
+    color: COLORS.white,
+    marginTop: 20,
   },
   noDataSubText: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.6)',
-    marginTop: 5,
-    textAlign: 'center',
-  },
-  loadingContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-    minHeight: 250,
-  },
-  loadingText: {
-    color: '#007AFF',
+    fontSize: 15,
+    color: COLORS.textSecondary,
     marginTop: 10,
+    textAlign: 'center',
+    lineHeight: 22,
   },
 });
 
