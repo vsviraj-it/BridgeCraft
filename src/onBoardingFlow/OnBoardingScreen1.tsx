@@ -39,7 +39,7 @@ const OnBoardingScreen1: React.FC<OnBoardingScreen1Props> = ({
 
       <OnBoardingImage source={require('../assets/OnBoarding1.png')} />
 
-      <PaginationDots totalDots={3} activeIndex={0} />
+      <PaginationDots totalDots={4} activeIndex={0} />
 
       <Text style={styles.welcomeText}>Welcome to</Text>
 

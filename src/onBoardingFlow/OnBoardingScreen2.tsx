@@ -39,7 +39,7 @@ const OnBoardingScreen2: React.FC<OnBoardingScreen2Props> = ({
 
       <OnBoardingImage source={require('../assets/OnBoarding2.png')} />
 
-      <PaginationDots totalDots={3} activeIndex={1} />
+      <PaginationDots totalDots={4} activeIndex={1} />
 
       <HowItWorksSection />
 

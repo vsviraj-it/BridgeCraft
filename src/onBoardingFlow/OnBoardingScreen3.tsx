@@ -15,11 +15,11 @@ interface OnBoardingScreen3Props {
 const OnBoardingScreen3: React.FC<OnBoardingScreen3Props> = ({
   navigation,
 }) => {
-  const handleGetStarted = () => {
+  const handleNext = () => {
     if (navigation) {
-      navigation.navigate('Home');
+      navigation.navigate('OnBoarding4');
     } else {
-      console.log('Navigate to Home (Get Started)');
+      console.log('Navigate to OnBoarding4');
     }
   };
 
@@ -46,7 +46,7 @@ const OnBoardingScreen3: React.FC<OnBoardingScreen3Props> = ({
 
       <OnBoardingImage source={require('../assets/OnBoarding3.png')} />
 
-      <PaginationDots totalDots={3} activeIndex={2} />
+      <PaginationDots totalDots={4} activeIndex={2} />
 
       <View style={styles.contentContainer}>
         <Text style={styles.titleText}>Why Neighbors Love Us</Text>
@@ -69,7 +69,7 @@ const OnBoardingScreen3: React.FC<OnBoardingScreen3Props> = ({
         </View>
       </View>
 
-      <NextButton onPress={handleGetStarted} text="Get Started" />
+      <NextButton onPress={handleNext} />
     </View>
   );
 };
