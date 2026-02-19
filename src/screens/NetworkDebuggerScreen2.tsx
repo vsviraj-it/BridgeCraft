@@ -22,6 +22,13 @@ const NetworkDebuggerScreen2 = (props: any) => {
     fetchData();
   }, [config]);
 
+  /**
+   * Fetches posts from the JSONPlaceholder posts endpoint and updates component state with the results.
+   *
+   * Performs a GET request to 'https://jsonplaceholder.typicode.com/posts', parses the response as JSON, stores the parsed data in component state, clears the loading flag, and logs a success message.
+   *
+   * Note: network and parsing errors are not handled by this function.
+   */
   function fetchData() {
     setLoading(true);
     fetch('https://jsonplaceholder.typicode.com/posts')
