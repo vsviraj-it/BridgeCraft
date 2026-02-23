@@ -18,16 +18,12 @@ const OnBoardingScreen3: React.FC<OnBoardingScreen3Props> = ({
   const handleNext = () => {
     if (navigation) {
       navigation.navigate('OnBoarding4');
-    } else {
-      console.log('Navigate to OnBoarding4');
     }
   };
 
   const handleSkip = () => {
     if (navigation) {
       navigation.navigate('Home');
-    } else {
-      console.log('Navigate to Home');
     }
   };
 

@@ -18,16 +18,12 @@ const OnBoardingScreen1: React.FC<OnBoardingScreen1Props> = ({
   const handleNext = () => {
     if (navigation) {
       navigation.navigate('OnBoarding2');
-    } else {
-      console.log('Navigate to OnBoarding2');
     }
   };
 
   const handleSkip = () => {
     if (navigation) {
       navigation.navigate('Home');
-    } else {
-      console.log('Navigate to Home');
     }
   };
 
