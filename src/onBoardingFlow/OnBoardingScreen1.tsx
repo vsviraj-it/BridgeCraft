@@ -18,16 +18,12 @@ const OnBoardingScreen1: React.FC<OnBoardingScreen1Props> = ({
   const handleNext = () => {
     if (navigation) {
       navigation.navigate('OnBoarding2');
-    } else {
-      console.log('Navigate to OnBoarding2');
     }
   };
 
   const handleSkip = () => {
     if (navigation) {
       navigation.navigate('Home');
-    } else {
-      console.log('Navigate to Home');
     }
   };
 
@@ -39,7 +35,7 @@ const OnBoardingScreen1: React.FC<OnBoardingScreen1Props> = ({
 
       <OnBoardingImage source={require('../assets/OnBoarding1.png')} />
 
-      <PaginationDots totalDots={3} activeIndex={0} />
+      <PaginationDots totalDots={4} activeIndex={0} />
 
       <Text style={styles.welcomeText}>Welcome to</Text>
 

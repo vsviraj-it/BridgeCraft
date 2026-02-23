@@ -5,6 +5,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import OnBoardingScreen1 from './src/onBoardingFlow/OnBoardingScreen1';
 import OnBoardingScreen2 from './src/onBoardingFlow/OnBoardingScreen2';
 import OnBoardingScreen3 from './src/onBoardingFlow/OnBoardingScreen3';
+import OnBoardingScreen4 from './src/onBoardingFlow/OnBoardingScreen4';
 import { View, Text, StyleSheet } from 'react-native';
 import Home from './src/Home';
 import NetworkHistoryScreen from './src/screens/NetworkHistoryScreen';
@@ -23,14 +24,22 @@ const App = () => {
     <SafeAreaProvider>
       <NavigationContainer>
         <Stack.Navigator
-          initialRouteName="Home"
+          initialRouteName="OnBoarding1"
           screenOptions={{
             headerShown: false,
             animation: 'slide_from_right',
           }}
         >
+          <Stack.Screen name="OnBoarding1" component={OnBoardingScreen1} />
+          <Stack.Screen name="OnBoarding2" component={OnBoardingScreen2} />
+          <Stack.Screen name="OnBoarding3" component={OnBoardingScreen3} />
+          <Stack.Screen name="OnBoarding4" component={OnBoardingScreen4} />
           <Stack.Screen name="Home" component={Home} />
-          <Stack.Screen name="NetworkHistory" component={NetworkHistoryScreen} options={{ headerShown: true, title: 'Network History' }} />
+          <Stack.Screen
+            name="NetworkHistory"
+            component={NetworkHistoryScreen}
+            options={{ headerShown: true, title: 'Network History' }}
+          />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
@@ -52,4 +61,3 @@ const styles = StyleSheet.create({
 });
 
 export default App;
- 
