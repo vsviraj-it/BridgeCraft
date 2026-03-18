@@ -1,0 +1,11 @@
+{
+  "name": "agentwatch-mcp",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1"
+  }
+}
