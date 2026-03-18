@@ -1,63 +1,32 @@
-import React from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import OnBoardingScreen1 from './src/onBoardingFlow/OnBoardingScreen1';
-import OnBoardingScreen2 from './src/onBoardingFlow/OnBoardingScreen2';
-import OnBoardingScreen3 from './src/onBoardingFlow/OnBoardingScreen3';
-import OnBoardingScreen4 from './src/onBoardingFlow/OnBoardingScreen4';
-import { View, Text, StyleSheet } from 'react-native';
-import Home from './src/Home';
-import NetworkHistoryScreen from './src/screens/NetworkHistoryScreen';
+import React, { useState, useEffect } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import ConnectScreen from './src/screens/agentWatch/ConnectScreen';
+import AgentWatchScreen from './src/screens/agentWatch/AgentWatchScreen';
 
-const Stack = createNativeStackNavigator();
-
-// Placeholder Home Screen
-const HomeScreen = () => (
-  <View style={styles.center}>
-    <Text style={styles.text}>Welcome Home!</Text>
-  </View>
-);
+const STORAGE_KEY = 'agentwatch_bridge_url';
 
 const App = () => {
+  const [bridgeUrl, setBridgeUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY).then(_saved => {
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) return null;
+
+  if (!bridgeUrl) {
+    return <ConnectScreen onConnect={setBridgeUrl} />;
+  }
+
   return (
-    <SafeAreaProvider>
-      <NavigationContainer>
-        <Stack.Navigator
-          initialRouteName="OnBoarding1"
-          screenOptions={{
-            headerShown: false,
-            animation: 'slide_from_right',
-          }}
-        >
-          <Stack.Screen name="OnBoarding1" component={OnBoardingScreen1} />
-          <Stack.Screen name="OnBoarding2" component={OnBoardingScreen2} />
-          <Stack.Screen name="OnBoarding3" component={OnBoardingScreen3} />
-          <Stack.Screen name="OnBoarding4" component={OnBoardingScreen4} />
-          <Stack.Screen name="Home" component={Home} />
-          <Stack.Screen
-            name="NetworkHistory"
-            component={NetworkHistoryScreen}
-            options={{ headerShown: true, title: 'Network History' }}
-          />
-        </Stack.Navigator>
-      </NavigationContainer>
-    </SafeAreaProvider>
+    <AgentWatchScreen
+      bridgeUrl={bridgeUrl}
+      onDisconnect={() => setBridgeUrl(null)}
+    />
   );
 };
-
-const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  text: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#03CF92',
-  },
-});
 
 export default App;
